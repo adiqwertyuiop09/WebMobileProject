@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { createClient } from '@supabase/supabase-js'
 
+// Initialize Admin Client once (only reads .env at build time)
+const supabaseAdmin = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+)
+
 const AVATAR_COLORS = [
   'bg-amber-100 text-amber-800',
   'bg-emerald-100 text-emerald-800',
@@ -151,11 +157,12 @@ export default function Tenants() {
       }
 
     } else {
-      // Create new auth user via Supabase Admin API
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
+      //  new auth user via Supabase ADMIN API (prevents Admin from being logged out)
+      const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
         email:    form.email.trim(),
         password: form.password,
-        options:  { data: { full_name: form.full_name.trim(), role: 'tenant' } }
+         email_confirm: true, // Forces instant verification
+        user_metadata: { full_name: form.full_name.trim(), role: 'tenant' } 
       })
       if (authErr) { setError(authErr.message); setSaving(false); return }
 
@@ -189,18 +196,8 @@ export default function Tenants() {
     await supabase.from('tenants').update({ status: 'inactive' }).eq('id', tenant.id)
     await supabase.from('units').update({ status: 'vacant' }).eq('id', tenant.unit_id)
 
-    //disable Supabase Auth account using admin client
-    const supabaseAdmin = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
-    )
-
-    await supabaseAdmin.auth.admin.updateUserById(tenant.user_id, {
-        ban_duration: 'none' // Sets account to banned permanently
-    })
-
     fetchAll()
-}
+  }
 
   async function handleReactivate(tenant) {
     if (!window.confirm(`Reactivate ${tenant.users?.full_name}'s account?`)) return
@@ -210,18 +207,8 @@ export default function Tenants() {
     await supabase.from('tenants').update({ status: 'active' }).eq('id', tenant.id)
     await supabase.from('units').update({ status: 'occupied' }).eq('id', tenant.unit_id)
 
-    // Unban the Supabase Auth account
-    const supabaseAdmin = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
-    )
-
-    await supabaseAdmin.auth.admin.updateUserById(tenant.user_id, {
-        ban_duration: '0'   // '0' removes the ban completely
-    })
-
     fetchAll()
-}
+  }
 
   const activeTenants   = tenants.filter(t => t.status === 'active').length
   const inactiveTenants = tenants.filter(t => t.status === 'inactive').length
