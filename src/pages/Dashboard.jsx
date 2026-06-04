@@ -101,7 +101,6 @@ export default function Dashboard() {
   const totalUnits    = units.length
   const occupiedUnits = units.filter(u => u.status === 'occupied').length
   const vacantUnits   = units.filter(u => u.status === 'vacant').length
-  const maintUnits    = units.filter(u => u.status === 'maintenance').length
   const occupancyRate = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0
 
   const activeTenants = tenants.length
@@ -297,7 +296,6 @@ export default function Dashboard() {
             {[
               { color: 'bg-emerald-500', label: `Occupied (${occupiedUnits})` },
               { color: 'bg-amber-400',   label: `Vacant (${vacantUnits})` },
-              { color: 'bg-red-500',     label: `Maint. (${maintUnits})` },
             ].map(s => (
               <div key={s.label} className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${s.color}`}></span>

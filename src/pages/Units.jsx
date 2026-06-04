@@ -4,10 +4,9 @@ import { supabase } from '../supabaseClient'
 const STATUS_STYLES = {
   occupied:    { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',  dot: 'bg-emerald-500',  label: 'Occupied' },
   vacant:      { bg: 'bg-amber-50 text-amber-900 border-amber-200/60',        dot: 'bg-amber-500',    label: 'Vacant' },
-  maintenance: { bg: 'bg-red-50 text-red-700 border-red-200/60',              dot: 'bg-red-500',      label: 'Maintenance' },
 }
 
-const FILTERS = ['all', 'occupied', 'vacant', 'maintenance']
+const FILTERS = ['all', 'occupied', 'vacant']
 
 export default function Units() {
   const [units, setUnits]         = useState([])
@@ -17,7 +16,7 @@ export default function Units() {
   const [editing, setEditing]     = useState(null)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
-  const [form, setForm]           = useState({ unit_number: '', type: '1 bedroom', rent_amount: 6500, status: 'vacant' })
+  const [form, setForm]           = useState({ unit_number: '', type: '1 bedroom', rent_amount: 6500 })
 
   useEffect(() => { fetchUnits() }, [])
 
@@ -28,6 +27,7 @@ export default function Units() {
       .select('*')
       .order('unit_number', { ascending: true })
     if (!error) setUnits(data)
+    if (error) console.error('Fetch error:', error.message)
     setLoading(false)
   }
 
@@ -35,21 +35,20 @@ export default function Units() {
     all:         units.length,
     occupied:    units.filter(u => u.status === 'occupied').length,
     vacant:      units.filter(u => u.status === 'vacant').length,
-    maintenance: units.filter(u => u.status === 'maintenance').length,
   }
 
   const filtered = filter === 'all' ? units : units.filter(u => u.status === filter)
 
   function openAdd() {
     setEditing(null)
-    setForm({ unit_number: '', type: '1 bedroom', rent_amount: 6500, status: 'vacant' })
+    setForm({ unit_number: '', type: '1 bedroom', rent_amount: 6500 })
     setError('')
     setShowModal(true)
   }
 
   function openEdit(unit) {
     setEditing(unit)
-    setForm({ unit_number: unit.unit_number, type: unit.type, rent_amount: unit.rent_amount, status: unit.status })
+    setForm({ unit_number: unit.unit_number, type: unit.type, rent_amount: unit.rent_amount })
     setError('')
     setShowModal(true)
   }
@@ -57,18 +56,25 @@ export default function Units() {
   async function handleSave() {
     setError('')
     if (!form.unit_number.trim()) return setError('Unit number is required.')
+    if (!form.rent_amount) return setError('Rent amount is required.')
+    
     setSaving(true)
     if (editing) {
       const { error } = await supabase
         .from('units')
-        .update({ type: form.type, rent_amount: Number(form.rent_amount), status: form.status })
+        .update({ type: form.type, rent_amount: Number(form.rent_amount) })
         .eq('id', editing.id)
       if (error) setError(error.message)
       else { setShowModal(false); fetchUnits() }
     } else {
       const { error } = await supabase
         .from('units')
-        .insert({ unit_number: form.unit_number.trim(), type: form.type, rent_amount: Number(form.rent_amount), status: form.status })
+        .insert({ 
+          unit_number: form.unit_number.trim(), 
+          type: form.type, 
+          rent_amount: Number(form.rent_amount), 
+          status: 'vacant' 
+        })
       if (error) setError(error.message)
       else { setShowModal(false); fetchUnits() }
     }
@@ -76,14 +82,13 @@ export default function Units() {
   }
 
   async function handleDelete(unit) {
+    if (unit.status === 'occupied') {
+      return alert('Cannot delete an occupied unit. Please deactivate or move the tenant first.')
+    }
     if (!window.confirm(`Delete Unit ${unit.unit_number}? This cannot be undone.`)) return
     const { error } = await supabase.from('units').delete().eq('id', unit.id)
     if (!error) fetchUnits()
-  }
-
-  async function handleStatusChange(unit, newStatus) {
-    await supabase.from('units').update({ status: newStatus }).eq('id', unit.id)
-    fetchUnits()
+    else alert(error.message)
   }
 
   return (
@@ -104,12 +109,11 @@ export default function Units() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {[
           { key: 'all',         label: 'Total units',  value: counts.all,         color: 'text-amber-950',  bg: 'bg-white',         border: 'border-stone-200' },
           { key: 'occupied',    label: 'Occupied',     value: counts.occupied,    color: 'text-emerald-700', bg: 'bg-emerald-50/60', border: 'border-emerald-100' },
           { key: 'vacant',      label: 'Vacant',       value: counts.vacant,      color: 'text-amber-900',   bg: 'bg-amber-50/40',   border: 'border-amber-200/60' },
-          { key: 'maintenance', label: 'Maintenance',  value: counts.maintenance, color: 'text-red-700',     bg: 'bg-red-50/60',     border: 'border-red-100' },
         ].map(s => (
           <button
             key={s.key}
@@ -171,18 +175,9 @@ export default function Units() {
                   <span className="text-xs text-stone-400 font-normal">/mo</span>
                 </div>
 
-                {/* Quick status change */}
-                <select
-                  value={unit.status}
-                  onChange={e => handleStatusChange(unit, e.target.value)}
-                  className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-stone-50 text-stone-600 font-medium focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 transition-colors"
-                >
-                  <option value="occupied">Occupied</option>
-                  <option value="vacant">Vacant</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
+                {/* Status is now fully automated, so no manual buttons are needed here */}
 
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-1 mt-auto">
                   <button
                     onClick={() => openEdit(unit)}
                     className="flex-1 text-xs font-medium py-1.5 border border-stone-200 rounded-lg text-stone-600 hover:bg-stone-50 transition-colors"
@@ -191,7 +186,8 @@ export default function Units() {
                   </button>
                   <button
                     onClick={() => handleDelete(unit)}
-                    className="flex-1 text-xs font-medium py-1.5 border border-red-100 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                    disabled={unit.status === 'occupied'}
+                    className="flex-1 text-xs font-medium py-1.5 border border-red-100 rounded-lg text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Delete
                   </button>
@@ -221,18 +217,17 @@ export default function Units() {
             )}
 
             <div className="flex flex-col gap-3.5">
-              {!editing && (
-                <div>
-                  <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Unit number</label>
-                  <input
-                    type="text"
-                    value={form.unit_number}
-                    onChange={e => setForm(f => ({ ...f, unit_number: e.target.value }))}
-                    placeholder="e.g. 115"
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 text-stone-800"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Unit number</label>
+                <input
+                  type="text"
+                  value={form.unit_number}
+                  onChange={e => setForm(f => ({ ...f, unit_number: e.target.value }))}
+                  placeholder="e.g. 115"
+                  disabled={!!editing}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 text-stone-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Type</label>
@@ -255,19 +250,6 @@ export default function Units() {
                   onChange={e => setForm(f => ({ ...f, rent_amount: e.target.value }))}
                   className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 text-stone-800"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1">Status</label>
-                <select
-                  value={form.status}
-                  onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 text-stone-800"
-                >
-                  <option value="vacant">Vacant</option>
-                  <option value="occupied">Occupied</option>
-                  <option value="maintenance">Maintenance</option>
-                </select>
               </div>
             </div>
 

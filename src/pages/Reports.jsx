@@ -115,7 +115,6 @@ export default function Reports() {
   const totalUnits      = units.length
   const occupiedUnits   = units.filter(u => u.status === 'occupied').length
   const vacantUnits     = units.filter(u => u.status === 'vacant').length
-  const maintUnits      = units.filter(u => u.status === 'maintenance').length
   const occupancyRate   = totalUnits > 0 ? Math.round((occupiedUnits / totalUnits) * 100) : 0
 
   // ── Tenant stats ─────────────────────────────────────────
@@ -283,7 +282,6 @@ export default function Reports() {
                 segments={[
                   { value: occupiedUnits, color: '#059669' },
                   { value: vacantUnits,   color: '#d97706' },
-                  { value: maintUnits,    color: '#dc2626' },
                 ]}
               />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -295,7 +293,6 @@ export default function Reports() {
               {[
                 { label: 'Occupied',    count: occupiedUnits, color: 'bg-emerald-500', pct: totalUnits > 0 ? Math.round((occupiedUnits/totalUnits)*100) : 0 },
                 { label: 'Vacant',      count: vacantUnits,   color: 'bg-amber-400',   pct: totalUnits > 0 ? Math.round((vacantUnits/totalUnits)*100) : 0 },
-                { label: 'Maintenance', count: maintUnits,    color: 'bg-red-500',     pct: totalUnits > 0 ? Math.round((maintUnits/totalUnits)*100) : 0 },
               ].map(s => (
                 <div key={s.label}>
                   <div className="flex justify-between items-center mb-0.5">
@@ -323,7 +320,6 @@ export default function Reports() {
                   title={`Unit ${unit.unit_number} — ${unit.status}`}
                   className={`aspect-square rounded-md flex items-center justify-center text-[9px] font-bold transition-all ${
                     unit.status === 'occupied'    ? 'bg-emerald-100 text-emerald-700' :
-                    unit.status === 'maintenance' ? 'bg-red-100 text-red-600' :
                                                     'bg-amber-50 text-amber-600'
                   }`}
                 >
@@ -336,7 +332,6 @@ export default function Reports() {
             {[
               { color: 'bg-emerald-100 text-emerald-700', label: 'Occupied' },
               { color: 'bg-amber-50 text-amber-600',      label: 'Vacant' },
-              { color: 'bg-red-100 text-red-600',         label: 'Maintenance' },
             ].map(s => (
               <div key={s.label} className="flex items-center gap-1">
                 <span className={`w-3 h-3 rounded-sm ${s.color} flex items-center justify-center text-[7px] font-bold`}>■</span>

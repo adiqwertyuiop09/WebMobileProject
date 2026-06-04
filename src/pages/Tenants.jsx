@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { createClient } from '@supabase/supabase-js'
 
-// Initialize Admin Client once (only reads .env at build time)
 const supabaseAdmin = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
@@ -126,7 +125,7 @@ export default function Tenants() {
         .eq('id', editing.id)
       if (tenantErr) { setError(tenantErr.message); setSaving(false); return }
 
-      // Update unit statuses
+      // Update unit statuses if unit changed
       if (editing.unit_id !== form.unit_id) {
         // Free old unit
         if (editing.unit_id) {
@@ -137,11 +136,11 @@ export default function Tenants() {
       }
 
     } else {
-      //  new auth user via Supabase ADMIN API (prevents Admin from being logged out)
+      // Create new auth user via Supabase ADMIN API
       const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
         email:    form.email.trim(),
         password: form.password,
-         email_confirm: true, // Forces instant verification
+        email_confirm: true,
         user_metadata: { full_name: form.full_name.trim(), role: 'tenant' } 
       })
       if (authErr) { setError(authErr.message); setSaving(false); return }
@@ -158,7 +157,14 @@ export default function Tenants() {
       const { error: tenantErr } = await supabase
         .from('tenants')
         .insert({ user_id: authData.user.id, unit_id: form.unit_id, lease_start: form.lease_start, lease_end: form.lease_end })
-      if (tenantErr) { setError(tenantErr.message); setSaving(false); return }
+      
+      if (tenantErr) { 
+        setError(tenantErr.message); 
+        setSaving(false); 
+        // ROLLBACK: Delete the created auth user so the email isn't permanently burned
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+        return 
+      }
 
       // Mark unit as occupied
       await supabase.from('units').update({ status: 'occupied' }).eq('id', form.unit_id)
@@ -172,9 +178,16 @@ export default function Tenants() {
   async function handleDeactivate(tenant) {
     if (!window.confirm(`Deactivate ${tenant.users?.full_name}'s account?`)) return
 
-    await supabase.from('users').update({ status: 'inactive' }).eq('id', tenant.user_id)
-    await supabase.from('tenants').update({ status: 'inactive' }).eq('id', tenant.id)
-    await supabase.from('units').update({ status: 'vacant' }).eq('id', tenant.unit_id)
+    const { error: userErr } = await supabase.from('users').update({ status: 'inactive' }).eq('id', tenant.user_id)
+    if (userErr) { alert('Failed to deactivate user: ' + userErr.message); return }
+
+    const { error: tenantErr } = await supabase.from('tenants').update({ status: 'inactive' }).eq('id', tenant.id)
+    if (tenantErr) { alert('Failed to deactivate tenant: ' + tenantErr.message); return }
+
+    if (tenant.unit_id) {
+      const { error: unitErr } = await supabase.from('units').update({ status: 'vacant' }).eq('id', tenant.unit_id)
+      if (unitErr) alert('Failed to set unit to vacant: ' + unitErr.message)
+    }
 
     fetchAll()
   }
@@ -182,10 +195,44 @@ export default function Tenants() {
   async function handleReactivate(tenant) {
     if (!window.confirm(`Reactivate ${tenant.users?.full_name}'s account?`)) return
 
-    // Update database records
-    await supabase.from('users').update({ status: 'active' }).eq('id', tenant.user_id)
-    await supabase.from('tenants').update({ status: 'active' }).eq('id', tenant.id)
-    await supabase.from('units').update({ status: 'occupied' }).eq('id', tenant.unit_id)
+    let clearUnit = false
+
+    // 1. Check if their old unit is already taken
+    if (tenant.unit_id) {
+      const { data: currentUnit } = await supabase
+        .from('units')
+        .select('status')
+        .eq('id', tenant.unit_id)
+        .single()
+
+      if (currentUnit?.status === 'occupied') {
+        const proceed = window.confirm(
+          `Their previous unit is now occupied by someone else. Reactivate tenant without a unit? (You will need to assign a new unit via Edit)`
+        )
+        if (!proceed) return // Abort reactivation
+        clearUnit = true
+      }
+    }
+
+    // 2. Update User
+    const { error: userErr } = await supabase.from('users').update({ status: 'active' }).eq('id', tenant.user_id)
+    if (userErr) { alert('Failed to reactivate user: ' + userErr.message); return }
+
+    // 3. Update Tenant
+    if (clearUnit) {
+      // Reactivate but remove unit association so it doesn't conflict
+      const { error: tenantErr } = await supabase.from('tenants').update({ status: 'active', unit_id: null }).eq('id', tenant.id)
+      if (tenantErr) { alert('Failed to update tenant record: ' + tenantErr.message); return }
+    } else {
+      const { error: tenantErr } = await supabase.from('tenants').update({ status: 'active' }).eq('id', tenant.id)
+      if (tenantErr) { alert('Failed to reactivate tenant: ' + tenantErr.message); return }
+
+      // 4. Re-occupy the unit if it was theirs and is currently vacant
+      if (tenant.unit_id) {
+        const { error: unitErr } = await supabase.from('units').update({ status: 'occupied' }).eq('id', tenant.unit_id)
+        if (unitErr) alert('Failed to set unit to occupied: ' + unitErr.message)
+      }
+    }
 
     fetchAll()
   }
@@ -266,7 +313,6 @@ export default function Tenants() {
                   isActive ? 'border-stone-200 hover:border-stone-300' : 'border-stone-100 opacity-60'
                 }`}
               >
-                {/* Changed items-start to items-center since avatar is gone */}
                 <div className="flex items-center justify-between gap-4">
                   
                   {/* Info */}
@@ -356,7 +402,6 @@ export default function Tenants() {
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl border border-stone-100 w-full sm:max-w-md p-6">
             <div className="w-10 h-1 bg-stone-200 rounded-full mx-auto mb-5 sm:hidden"></div>
 
-            {/* Removed avatar block from here */}
             <div className="mb-5">
               <div className="text-base font-bold text-amber-950">{viewing.users?.full_name}</div>
               <div className="text-xs text-stone-400 mt-0.5">{viewing.users?.email}</div>
