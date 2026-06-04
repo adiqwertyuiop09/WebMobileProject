@@ -12,6 +12,8 @@ const MONTHS = [
   'July','August','September','October','November','December'
 ]
 
+const DEFAULT_RENT_AMOUNT = 6500
+
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -20,6 +22,54 @@ function formatDate(dateStr) {
 function getCurrentMonthYear() {
   const now = new Date()
   return { month: now.getMonth() + 1, year: now.getFullYear() }
+}
+
+// FIX 1: Changed to calculate the NEXT billing month instead of the current one
+function getNextBillingMonthInput() {
+  const now = new Date()
+  // Using the 1st of the month prevents JS Date rollover bugs (e.g. Jan 31 + 1 month = Mar 3)
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const year = nextMonthDate.getFullYear()
+  const month = nextMonthDate.getMonth() + 1 // getMonth() is 0-indexed
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
+function getBillingMonthParts(monthInput) {
+  const [year, month] = monthInput.split('-').map(Number)
+  const monthPadded = String(month).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+
+  return {
+    year,
+    month,
+    label: `${MONTHS[month - 1]} ${year}`,
+    billingMonth: `${year}-${monthPadded}-01`,
+    monthEnd: `${year}-${monthPadded}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
+function getTenantDueDateForBillingMonth(leaseStart, billingMonth) {
+  if (!leaseStart) return null
+  const leaseDay = Number(leaseStart.split('-')[2])
+  const lastBillingDay = Number(billingMonth.monthEnd.split('-')[2])
+  const dueDay = Math.min(leaseDay, lastBillingDay)
+
+  return `${billingMonth.year}-${String(billingMonth.month).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}`
+}
+
+function getBillingMonthFromDate(dateStr) {
+  if (!dateStr) return null
+  const [year, month] = dateStr.split('-')
+  return `${year}-${month}-01`
+}
+
+function isDuplicateBillingError(error) {
+  return error?.code === '23505' || error?.message?.includes('unique_tenant_billing_month')
+}
+
+function getCleanPaymentError(error, fallback = 'Unable to update payment. Please try again.') {
+  if (isDuplicateBillingError(error)) return 'A bill already exists for this tenant and billing month.'
+  return error?.message || fallback
 }
 
 export default function Payments() {
@@ -33,11 +83,13 @@ export default function Payments() {
   const [selectedPayment, setSelectedPayment] = useState(null)
   const [saving, setSaving]             = useState(false)
   const [error, setError]               = useState('')
+  const billingMonthInput = getNextBillingMonthInput()
+  const [notice, setNotice]             = useState(null)
+  const [confirmAction, setConfirmAction] = useState(null)
 
-  const { month: curMonth, year: curYear } = getCurrentMonthYear()
-
+  // FIX 3: Removed unused month/year from addForm since they were never submitted to Supabase
   const [addForm, setAddForm] = useState({
-    tenant_id: '', amount: 6500, due_date: '', month: curMonth, year: curYear
+    tenant_id: '', amount: DEFAULT_RENT_AMOUNT, due_date: ''
   })
 
   useEffect(() => { fetchAll() }, [])
@@ -87,41 +139,164 @@ export default function Payments() {
   // Mark as paid modal
   function openMarkPaid(payment) {
     setSelectedPayment(payment)
+    setError('')
     setShowMarkModal(true)
   }
 
   async function handleMarkPaid() {
     if (!selectedPayment) return
+    setError('')
+
+    if (selectedPayment.status === 'paid') {
+      setShowMarkModal(false)
+      setNotice({
+        type: 'info',
+        title: 'Already paid',
+        message: 'This payment is already marked as paid.',
+      })
+      return
+    }
+
     setSaving(true)
     const today = new Date().toISOString().split('T')[0]
     const { error } = await supabase
       .from('payments')
       .update({ status: 'paid', paid_date: today })
       .eq('id', selectedPayment.id)
-    if (error) { setError(error.message) }
-    else { setShowMarkModal(false); fetchAll() }
+
+    if (error) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(error, 'Unable to mark this payment as paid. Please try again.'),
+      })
+    } else {
+      setShowMarkModal(false)
+      setSelectedPayment(null)
+      await fetchAll()
+      setNotice({
+        type: 'success',
+        title: 'Payment confirmed',
+        message: 'Payment was marked as paid.',
+      })
+    }
+
     setSaving(false)
   }
 
   async function handleMarkOverdue(payment) {
-    await supabase.from('payments').update({ status: 'overdue' }).eq('id', payment.id)
-    fetchAll()
+    setSaving(true)
+    const { error } = await supabase.from('payments').update({ status: 'overdue' }).eq('id', payment.id)
+
+    if (error) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(error, 'Unable to mark payment overdue. Please try again.'),
+      })
+    } else {
+      await fetchAll()
+      setNotice({
+        type: 'warning',
+        title: 'Payment marked overdue',
+        message: 'The payment status was updated to overdue.',
+      })
+    }
+
+    setSaving(false)
   }
 
+  // FIX 2: Check the due date when undoing a paid payment
   async function handleMarkPending(payment) {
-    await supabase.from('payments').update({ status: 'pending', paid_date: null }).eq('id', payment.id)
-    fetchAll()
+    setSaving(true)
+    const today = new Date().toISOString().split('T')[0]
+    const newStatus = payment.due_date < today ? 'overdue' : 'pending'
+
+    const { error } = await supabase.from('payments').update({ status: newStatus, paid_date: null }).eq('id', payment.id)
+
+    if (error) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(error, 'Unable to undo this payment. Please try again.'),
+      })
+    } else {
+      await fetchAll()
+      setNotice({
+        type: 'info',
+        title: 'Payment reopened',
+        message: `The payment was moved back to ${newStatus} and the paid date was cleared.`,
+      })
+    }
+
+    setSaving(false)
   }
 
-  async function handleDelete(payment) {
-    if (!window.confirm('Delete this payment record?')) return
-    await supabase.from('payments').delete().eq('id', payment.id)
-    fetchAll()
+  function handleDelete(payment) {
+    if (!['pending', 'overdue'].includes(payment.status)) {
+      setNotice({
+        type: 'warning',
+        title: 'Payment history preserved',
+        message: 'Paid payment records cannot be deleted. Use Undo if it was marked paid by mistake.',
+      })
+      return
+    }
+
+    setConfirmAction({
+      title: 'Delete payment',
+      message: 'Delete this payment record?',
+      confirmText: 'Delete',
+      tone: 'danger',
+      onConfirm: () => handleDeleteConfirmed(payment),
+    })
+  }
+
+  async function runConfirmAction() {
+    if (!confirmAction?.onConfirm) return
+    const action = confirmAction
+
+    try {
+      await action.onConfirm()
+    } catch {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: 'Something went wrong. Please try again.',
+      })
+    } finally {
+      setConfirmAction(null)
+    }
+  }
+
+  async function handleDeleteConfirmed(payment) {
+    setSaving(true)
+    const { error } = await supabase.from('payments').delete().eq('id', payment.id)
+
+    if (error) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(error, 'Unable to delete payment record. Please try again.'),
+      })
+    } else {
+      if (selectedPayment?.id === payment.id) {
+        setSelectedPayment(null)
+        setShowMarkModal(false)
+      }
+      await fetchAll()
+      setNotice({
+        type: 'success',
+        title: 'Payment deleted',
+        message: 'The selected payment record was deleted.',
+      })
+    }
+
+    setSaving(false)
   }
 
   // Add payment modal
   function openAdd() {
-    setAddForm({ tenant_id: '', amount: 6500, due_date: '', month: curMonth, year: curYear })
+    setAddForm({ tenant_id: '', amount: DEFAULT_RENT_AMOUNT, due_date: '' })
     setError('')
     setShowAddModal(true)
   }
@@ -138,27 +313,160 @@ export default function Payments() {
         amount:    Number(addForm.amount),
         status:    'pending',
         due_date:  addForm.due_date,
+        billing_month: getBillingMonthFromDate(addForm.due_date),
       })
-    if (error) setError(error.message)
-    else { setShowAddModal(false); fetchAll() }
+    if (error) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(error, 'Unable to add payment. Please try again.'),
+      })
+    } else {
+      setShowAddModal(false)
+      await fetchAll()
+      setNotice({
+        type: 'success',
+        title: 'Payment added',
+        message: 'The payment record was added.',
+      })
+    }
     setSaving(false)
   }
 
-  // Generate bills for ALL active tenants for a given month
-  async function handleGenerateBills() {
-    if (!window.confirm(`Generate billing for all ${tenants.length} active tenants for ${MONTHS[curMonth - 1]} ${curYear}?`)) return
+  function handleGenerateBills() {
+    const selectedMonth = getBillingMonthParts(billingMonthInput)
+
+    setConfirmAction({
+      title: 'Generate bills',
+      message: `Generate bills for ${selectedMonth.label}?`,
+      confirmText: 'Generate bills',
+      tone: 'success',
+      onConfirm: () => handleGenerateBillsConfirmed(),
+    })
+  }
+
+  // Generate bills manually for the current billing month.
+  async function handleGenerateBillsConfirmed() {
+    setNotice(null)
+    setError('')
+
+    const selectedMonth = getBillingMonthParts(billingMonthInput)
+
     setSaving(true)
-    const lastDay = new Date(curYear, curMonth, 0).getDate()
-    const dueDate = `${curYear}-${String(curMonth).padStart(2, '0')}-${lastDay}`
-    const inserts = tenants.map(t => ({
+
+    const { data: activeTenants, error: tenantsError } = await supabase
+      .from('tenants')
+      .select(`*, users ( full_name, email ), units ( unit_number, rent_amount )`)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+
+    if (tenantsError) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(tenantsError, 'Unable to load active tenants. Please try again.'),
+      })
+      setSaving(false)
+      return
+    }
+
+    const currentActiveTenants = activeTenants || []
+    setTenants(currentActiveTenants)
+
+    if (currentActiveTenants.length === 0) {
+      setNotice({
+        type: 'warning',
+        title: 'No active tenants',
+        message: 'There are no active tenants to generate bills for.',
+      })
+      setSaving(false)
+      return
+    }
+
+    const tenantsInBillingMonth = currentActiveTenants.filter(t => t.lease_start && t.lease_start <= selectedMonth.monthEnd)
+
+    if (tenantsInBillingMonth.length === 0) {
+      setNotice({
+        type: 'warning',
+        title: 'No active tenants',
+        message: 'There are no active tenants to generate bills for.',
+      })
+      setSaving(false)
+      return
+    }
+
+    const activeTenantIds = tenantsInBillingMonth.map(t => t.id)
+
+    // Any bill for this tenant/month blocks generation, including paid or overdue records.
+    const { data: existingBills, error: existingBillsError } = await supabase
+      .from('payments')
+      .select('tenant_id')
+      .eq('billing_month', selectedMonth.billingMonth)
+      .in('tenant_id', activeTenantIds)
+
+    if (existingBillsError) {
+      setNotice({
+        type: 'error',
+        title: 'Action failed',
+        message: getCleanPaymentError(existingBillsError, 'Unable to check existing bills. Please try again.'),
+      })
+      setSaving(false)
+      return
+    }
+
+    const existingTenantIds = new Set((existingBills || []).map(p => p.tenant_id))
+    const tenantsToBill = tenantsInBillingMonth.filter(t => !existingTenantIds.has(t.id))
+    const skippedCount = tenantsInBillingMonth.length - tenantsToBill.length
+
+    if (tenantsToBill.length === 0) {
+      await fetchAll()
+      setNotice({
+        type: 'info',
+        title: 'No duplicates created',
+        message: 'Bills for this month already exist. No duplicate bills were created.',
+      })
+      setSaving(false)
+      return
+    }
+
+    const inserts = tenantsToBill.map(t => ({
       tenant_id: t.id,
-      amount:    Number(t.units?.rent_amount || 6500),
+      amount:    Number(t.units?.rent_amount || DEFAULT_RENT_AMOUNT),
       status:    'pending',
-      due_date:  dueDate,
+      due_date:  getTenantDueDateForBillingMonth(t.lease_start, selectedMonth),
+      billing_month: selectedMonth.billingMonth,
     }))
-    const { error } = await supabase.from('payments').insert(inserts)
-    if (error) alert(error.message)
-    else fetchAll()
+
+    const { data: generatedBills, error } = await supabase
+      .from('payments')
+      .insert(inserts)
+      .select('tenant_id')
+
+    if (error) {
+      if (isDuplicateBillingError(error)) {
+        await fetchAll()
+        setNotice({
+          type: 'info',
+          title: 'No duplicates created',
+          message: 'Bills for this month already exist. No duplicate bills were created.',
+        })
+      } else {
+        setNotice({
+          type: 'error',
+          title: 'Action failed',
+          message: getCleanPaymentError(error, 'Unable to generate bills. Please try again.'),
+        })
+      }
+    } else {
+      const generatedCount = generatedBills?.length ?? tenantsToBill.length
+      setNotice({
+        type: 'success',
+        title: 'Bills generated',
+        message: `Generated ${generatedCount} new bill${generatedCount === 1 ? '' : 's'}. Skipped ${skippedCount} existing bill${skippedCount === 1 ? '' : 's'}.`,
+      })
+      await fetchAll()
+    }
+
     setSaving(false)
   }
 
@@ -174,7 +482,7 @@ export default function Payments() {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={handleGenerateBills}
-            disabled={saving || tenants.length === 0}
+            disabled={saving}
             className="flex items-center justify-center gap-2 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-40 shadow-sm"
           >
             ⚡ Generate bills
@@ -313,12 +621,14 @@ export default function Payments() {
                               Undo
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDelete(payment)}
-                            className="text-[11px] font-semibold px-2.5 py-1 bg-white hover:bg-red-50 text-red-500 border border-stone-200 hover:border-red-200 rounded-lg transition-colors"
-                          >
-                            Delete
-                          </button>
+                          {['pending', 'overdue'].includes(payment.status) && (
+                            <button
+                              onClick={() => handleDelete(payment)}
+                              className="text-[11px] font-semibold px-2.5 py-1 bg-white hover:bg-red-50 text-red-500 border border-stone-200 hover:border-red-200 rounded-lg transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -381,12 +691,14 @@ export default function Payments() {
                         Undo
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDelete(payment)}
-                      className="text-xs font-semibold px-3 py-1.5 text-red-500 border border-stone-200 rounded-lg"
-                    >
-                      Delete
-                    </button>
+                    {['pending', 'overdue'].includes(payment.status) && (
+                      <button
+                        onClick={() => handleDelete(payment)}
+                        className="text-xs font-semibold px-3 py-1.5 text-red-500 border border-stone-200 rounded-lg"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -470,7 +782,7 @@ export default function Payments() {
                   value={addForm.tenant_id}
                   onChange={e => {
                     const t = tenants.find(x => x.id === e.target.value)
-                    setAddForm(f => ({ ...f, tenant_id: e.target.value, amount: t?.units?.rent_amount || 6500 }))
+                    setAddForm(f => ({ ...f, tenant_id: e.target.value, amount: t?.units?.rent_amount || DEFAULT_RENT_AMOUNT }))
                   }}
                   className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 text-stone-800"
                 >
@@ -519,6 +831,101 @@ export default function Payments() {
                 {saving ? 'Saving...' : 'Add payment'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-[#2B1F17]/45 p-4 backdrop-blur-sm"
+          onClick={() => { if (!saving) setConfirmAction(null) }}
+        >
+          <div
+            className="w-full max-w-sm rounded-[22px] border border-[#EADFD4] bg-[#FFFCF8] p-5 shadow-[0_24px_80px_rgba(43,31,23,0.22)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl text-xl font-extrabold ${
+              confirmAction.tone === 'danger'
+                ? 'bg-red-50 text-red-700'
+                : confirmAction.tone === 'warning'
+                  ? 'bg-amber-50 text-amber-800'
+                  : 'bg-[#F3E4D7] text-[#2B1F17]'
+            }`}>
+              {confirmAction.tone === 'danger' || confirmAction.tone === 'warning' ? '!' : '?'}
+            </div>
+
+            <h3 className="text-center text-lg font-extrabold text-[#2B1F17]">
+              {confirmAction.title}
+            </h3>
+
+            <p className="mt-2 text-center text-sm leading-6 text-[#7A6258]">
+              {confirmAction.message}
+            </p>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setConfirmAction(null)}
+                className="flex-1 rounded-xl border border-[#EADFD4] bg-[#FAF7F5] py-2.5 text-sm font-semibold text-[#7A6258] transition-colors hover:bg-[#F3E4D7] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={runConfirmAction}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-[#F5EDE6] transition-colors disabled:opacity-50 ${
+                  confirmAction.tone === 'danger'
+                    ? 'bg-red-700 hover:bg-red-800'
+                    : confirmAction.tone === 'warning'
+                      ? 'bg-[#C99061] hover:bg-[#B87E4F]'
+                      : 'bg-[#2B1F17] hover:bg-[#3A2A20]'
+                }`}
+              >
+                {saving ? 'Working...' : confirmAction.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {notice && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-[#2B1F17]/45 p-4 backdrop-blur-sm"
+          onClick={() => setNotice(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-[22px] border border-[#EADFD4] bg-[#FFFCF8] p-5 shadow-[0_24px_80px_rgba(43,31,23,0.22)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl text-xl font-extrabold ${
+              notice.type === 'success'
+                ? 'bg-emerald-50 text-emerald-700'
+                : notice.type === 'error'
+                  ? 'bg-red-50 text-red-700'
+                  : notice.type === 'warning'
+                    ? 'bg-amber-50 text-amber-800'
+                    : 'bg-[#F3E4D7] text-[#2B1F17]'
+            }`}>
+              {notice.type === 'success' ? 'OK' : notice.type === 'error' || notice.type === 'warning' ? '!' : 'i'}
+            </div>
+
+            <h3 className="text-center text-lg font-extrabold text-[#2B1F17]">
+              {notice.title}
+            </h3>
+
+            <p className="mt-2 text-center text-sm leading-6 text-[#7A6258]">
+              {notice.message}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="mt-5 w-full rounded-xl bg-[#2B1F17] py-2.5 text-sm font-semibold text-[#F5EDE6] transition-colors hover:bg-[#3A2A20]"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

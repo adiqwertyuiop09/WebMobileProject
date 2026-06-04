@@ -34,7 +34,6 @@ function getGreeting() {
 const STATUS_UNIT = {
   occupied:    { dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
   vacant:      { dot: 'bg-amber-400',   badge: 'bg-amber-100 text-amber-700' },
-  maintenance: { dot: 'bg-red-500',     badge: 'bg-red-100 text-red-600' },
 }
 
 const STATUS_PAYMENT = {

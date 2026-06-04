@@ -22,7 +22,8 @@ function Field({ label, children }) {
   )
 }
 
-function Input({ value, onChange, type = 'text', placeholder, disabled }) {
+// Added className prop and browser icon hiding variants
+function Input({ value, onChange, type = 'text', placeholder, disabled, className = '' }) {
   return (
     <input
       type={type}
@@ -30,7 +31,7 @@ function Input({ value, onChange, type = 'text', placeholder, disabled }) {
       onChange={onChange}
       placeholder={placeholder}
       disabled={disabled}
-      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className={`w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-900/10 focus:border-amber-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed [&::-ms-reveal]:hidden [&::-ms-clear]:hidden ${className}`}
     />
   )
 }
@@ -147,7 +148,6 @@ export default function Settings() {
       </div>
 
       {/* ── PROFILE CARD ── */}
-      {/* Removed initials avatar block */}
       <div className="bg-white border border-stone-200 rounded-2xl p-5">
         <div className="text-base font-bold text-amber-950">{profile.full_name || 'Admin'}</div>
         <div className="text-xs text-stone-400 mt-0.5">{profile.email}</div>
@@ -198,11 +198,12 @@ export default function Settings() {
                 value={passwords.newPass}
                 onChange={e => setPasswords(p => ({ ...p, newPass: e.target.value }))}
                 placeholder="Enter new password"
+                className="pr-14" /* Added right padding to prevent text overlap */
               />
               <button
                 type="button"
                 onClick={() => setShowPasswords(s => ({ ...s, newPass: !s.newPass }))}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors text-xs font-semibold"
               >
                 {showPasswords.newPass ? 'Hide' : 'Show'}
               </button>
@@ -215,11 +216,12 @@ export default function Settings() {
                 value={passwords.confirm}
                 onChange={e => setPasswords(p => ({ ...p, confirm: e.target.value }))}
                 placeholder="Repeat new password"
+                className="pr-14" /* Added right padding to prevent text overlap */
               />
               <button
                 type="button"
                 onClick={() => setShowPasswords(s => ({ ...s, confirm: !s.confirm }))}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors text-xs font-semibold"
               >
                 {showPasswords.confirm ? 'Hide' : 'Show'}
               </button>

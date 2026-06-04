@@ -94,13 +94,6 @@ export default function Maintenance() {
     if (viewing?.id === request.id) setViewing(prev => ({ ...prev, ...updates }))
   }
 
-  async function handleReopen(request) {
-    setUpdating(request.id)
-    await supabase.from('maintenance_requests').update({ status: 'pending', resolved_at: null }).eq('id', request.id)
-    setUpdating(null)
-    fetchRequests()
-  }
-
   async function handleDelete(request) {
     const unit = request.tenants?.units?.unit_number || request.units?.unit_number
     const unitLabel = unit ? `Unit ${unit}` : 'this unit'
@@ -270,16 +263,6 @@ export default function Maintenance() {
                           </button>
                         )}
 
-                        {request.status === 'resolved' && (
-                          <button
-                            onClick={() => handleReopen(request)}
-                            disabled={isUpdating}
-                            className="text-xs font-medium px-3 py-1.5 border border-amber-200 rounded-lg text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-50"
-                          >
-                            Reopen
-                          </button>
-                        )}
-
                         <button
                           onClick={() => handleDelete(request)}
                           className="text-xs font-medium px-3 py-1.5 border border-stone-200 rounded-lg text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors"
@@ -367,7 +350,6 @@ export default function Maintenance() {
               </section>
             </div>
 
-            {/* ✅ ONLY THIS SECTION WAS CHANGED - Modal Buttons */}
             <div className="flex flex-col gap-2 border-t border-[#EADFD4] px-5 py-4 sm:flex-row sm:px-6">
               <button
                 onClick={() => setViewing(null)}
@@ -381,14 +363,6 @@ export default function Maintenance() {
                   className="flex-1 rounded-xl bg-amber-900 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-950"
                 >
                   {NEXT_LABEL[viewing.status]}
-                </button>
-              )}
-              {viewing.status === 'resolved' && (
-                <button
-                  onClick={() => { handleReopen(viewing); setViewing(null) }}
-                  className="flex-1 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100"
-                >
-                  Reopen
                 </button>
               )}
             </div>
