@@ -259,7 +259,7 @@ export default function Maintenance() {
                                 : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                             }`}
                           >
-                            {isUpdating ? '...' : NEXT_LABEL[request.status]}
+                            {isUpdating ? 'Saving...' : NEXT_LABEL[request.status]}
                           </button>
                         )}
 
@@ -350,6 +350,7 @@ export default function Maintenance() {
               </section>
             </div>
 
+            {/* Fixed Modal Buttons - Removed setViewing(null) from actions so modal updates in place smoothly */}
             <div className="flex flex-col gap-2 border-t border-[#EADFD4] px-5 py-4 sm:flex-row sm:px-6">
               <button
                 onClick={() => setViewing(null)}
@@ -359,10 +360,11 @@ export default function Maintenance() {
               </button>
               {viewing.status !== 'resolved' && (
                 <button
-                  onClick={() => { handleAdvanceStatus(viewing); setViewing(null) }}
-                  className="flex-1 rounded-xl bg-amber-900 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-950"
+                  onClick={() => handleAdvanceStatus(viewing)}
+                  disabled={updating === viewing.id}
+                  className="flex-1 rounded-xl bg-amber-900 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-950 disabled:opacity-50"
                 >
-                  {NEXT_LABEL[viewing.status]}
+                  {updating === viewing.id ? 'Saving...' : NEXT_LABEL[viewing.status]}
                 </button>
               )}
             </div>
