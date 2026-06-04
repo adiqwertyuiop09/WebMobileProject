@@ -27,7 +27,7 @@ function AdminLayout({ children }) {
   )
 }
 
-// NEW: This specifically checks if the logged-in user is an admin
+// specifically checks if the logged-in user is an admin
 function AdminRoute({ session, children }) {
   const [isAuthorized, setIsAuthorized] = useState(null) // null = checking, true = admin, false = tenant/other
 
