@@ -367,6 +367,7 @@ export default function Maintenance() {
               </section>
             </div>
 
+            {/* ✅ ONLY THIS SECTION WAS CHANGED - Modal Buttons */}
             <div className="flex flex-col gap-2 border-t border-[#EADFD4] px-5 py-4 sm:flex-row sm:px-6">
               <button
                 onClick={() => setViewing(null)}
@@ -377,11 +378,7 @@ export default function Maintenance() {
               {viewing.status !== 'resolved' && (
                 <button
                   onClick={() => { handleAdvanceStatus(viewing); setViewing(null) }}
-                  className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white shadow-sm transition-colors ${
-                    viewing.status === 'pending'
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                  className="flex-1 rounded-xl bg-amber-900 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-950"
                 >
                   {NEXT_LABEL[viewing.status]}
                 </button>
@@ -389,12 +386,13 @@ export default function Maintenance() {
               {viewing.status === 'resolved' && (
                 <button
                   onClick={() => { handleReopen(viewing); setViewing(null) }}
-                  className="flex-1 rounded-xl border border-[#EADFD4] bg-[#F3E4D7] py-2.5 text-sm font-semibold text-[#2B1F17] transition-colors hover:bg-[#EADFD4]"
+                  className="flex-1 rounded-xl border border-amber-200 bg-amber-50 py-2.5 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100"
                 >
                   Reopen
                 </button>
               )}
             </div>
+
           </div>
         </div>
       )}

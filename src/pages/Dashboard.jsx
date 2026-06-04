@@ -137,7 +137,7 @@ export default function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold text-amber-950 tracking-tight">
-            {getGreeting()}, {adminName.split(' ')[0]} 👋
+            {getGreeting()}, {adminName.split(' ')[0]} 
           </h1>
           <p className="text-xs text-stone-400 mt-0.5">{today}</p>
         </div>
@@ -416,17 +416,12 @@ export default function Dashboard() {
               {tenants.slice(0, 6).map(tenant => {
                 const name     = tenant.users?.full_name || 'Unknown'
                 const unit     = tenant.units?.unit_number
-                const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-                const colors   = ['bg-amber-100 text-amber-800','bg-emerald-100 text-emerald-700','bg-blue-100 text-blue-700','bg-purple-100 text-purple-700','bg-rose-100 text-rose-700']
-                const color    = colors[name.charCodeAt(0) % colors.length]
+                // Removed initials and color logic here
                 const expiring = tenant.lease_end && (new Date(tenant.lease_end) - new Date()) / 86400000 <= 30
                 return (
                   <div key={tenant.id}
                     onClick={() => navigate('/tenants')}
-                    className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-stone-50 cursor-pointer transition-colors">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${color}`}>
-                      {initials}
-                    </div>
+                    className="flex items-center justify-between gap-2.5 p-2 rounded-xl hover:bg-stone-50 cursor-pointer transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold text-stone-700 truncate">{name}</div>
                     </div>

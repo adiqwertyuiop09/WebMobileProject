@@ -8,26 +8,6 @@ const supabaseAdmin = createClient(
   import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
 )
 
-const AVATAR_COLORS = [
-  'bg-amber-100 text-amber-800',
-  'bg-emerald-100 text-emerald-800',
-  'bg-blue-100 text-blue-800',
-  'bg-purple-100 text-purple-800',
-  'bg-rose-100 text-rose-800',
-  'bg-teal-100 text-teal-800',
-]
-
-function getInitials(name) {
-  if (!name) return '?'
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-}
-
-function getAvatarColor(name) {
-  if (!name) return AVATAR_COLORS[0]
-  const index = name.charCodeAt(0) % AVATAR_COLORS.length
-  return AVATAR_COLORS[index]
-}
-
 function formatDate(dateStr) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -286,12 +266,9 @@ export default function Tenants() {
                   isActive ? 'border-stone-200 hover:border-stone-300' : 'border-stone-100 opacity-60'
                 }`}
               >
-                <div className="flex items-start gap-4">
-                  {/* Avatar */}
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ${getAvatarColor(name)}`}>
-                    {getInitials(name)}
-                  </div>
-
+                {/* Changed items-start to items-center since avatar is gone */}
+                <div className="flex items-center justify-between gap-4">
+                  
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
@@ -379,14 +356,10 @@ export default function Tenants() {
           <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl border border-stone-100 w-full sm:max-w-md p-6">
             <div className="w-10 h-1 bg-stone-200 rounded-full mx-auto mb-5 sm:hidden"></div>
 
-            <div className="flex items-center gap-4 mb-5">
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-bold ${getAvatarColor(viewing.users?.full_name)}`}>
-                {getInitials(viewing.users?.full_name)}
-              </div>
-              <div>
-                <div className="text-base font-bold text-amber-950">{viewing.users?.full_name}</div>
-                <div className="text-xs text-stone-400 mt-0.5">{viewing.users?.email}</div>
-              </div>
+            {/* Removed avatar block from here */}
+            <div className="mb-5">
+              <div className="text-base font-bold text-amber-950">{viewing.users?.full_name}</div>
+              <div className="text-xs text-stone-400 mt-0.5">{viewing.users?.email}</div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

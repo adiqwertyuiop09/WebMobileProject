@@ -126,10 +126,6 @@ export default function Settings() {
     window.location.href = '/login'
   }
 
-  const initials = profile.full_name
-    ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'A'
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
@@ -151,19 +147,13 @@ export default function Settings() {
       </div>
 
       {/* ── PROFILE CARD ── */}
+      {/* Removed initials avatar block */}
       <div className="bg-white border border-stone-200 rounded-2xl p-5">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-900 flex items-center justify-center text-xl font-bold text-amber-100 flex-shrink-0 shadow-sm">
-            {initials}
-          </div>
-          <div>
-            <div className="text-base font-bold text-amber-950">{profile.full_name || 'Admin'}</div>
-            <div className="text-xs text-stone-400 mt-0.5">{profile.email}</div>
-            <span className="inline-block mt-1.5 text-[11px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
-              Administrator
-            </span>
-          </div>
-        </div>
+        <div className="text-base font-bold text-amber-950">{profile.full_name || 'Admin'}</div>
+        <div className="text-xs text-stone-400 mt-0.5">{profile.email}</div>
+        <span className="inline-block mt-1.5 text-[11px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+          Administrator
+        </span>
       </div>
 
       {/* ── PROFILE SETTINGS ── */}
