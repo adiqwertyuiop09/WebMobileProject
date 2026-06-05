@@ -24,13 +24,19 @@ function getCurrentMonthYear() {
   return { month: now.getMonth() + 1, year: now.getFullYear() }
 }
 
-// FIX 1: Changed to calculate the NEXT billing month instead of the current one
+// FIX: Helper function to safely get YYYY-MM-DD in the user's LOCAL timezone
+function getLocalDateString(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function getNextBillingMonthInput() {
   const now = new Date()
-  // Using the 1st of the month prevents JS Date rollover bugs (e.g. Jan 31 + 1 month = Mar 3)
   const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
   const year = nextMonthDate.getFullYear()
-  const month = nextMonthDate.getMonth() + 1 // getMonth() is 0-indexed
+  const month = nextMonthDate.getMonth() + 1
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
@@ -87,7 +93,6 @@ export default function Payments() {
   const [notice, setNotice]             = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
 
-  // FIX 3: Removed unused month/year from addForm since they were never submitted to Supabase
   const [addForm, setAddForm] = useState({
     tenant_id: '', amount: DEFAULT_RENT_AMOUNT, due_date: ''
   })
@@ -120,13 +125,11 @@ export default function Payments() {
     setLoading(false)
   }
 
-  // Stats
   const totalCollected = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0)
   const countPaid      = payments.filter(p => p.status === 'paid').length
   const countPending   = payments.filter(p => p.status === 'pending').length
   const countOverdue   = payments.filter(p => p.status === 'overdue').length
 
-  // Filter + search
   const filtered = payments.filter(p => {
     const name  = p.tenants?.users?.full_name?.toLowerCase() || ''
     const unit  = p.tenants?.units?.unit_number || ''
@@ -136,7 +139,6 @@ export default function Payments() {
     return matchSearch && matchFilter
   })
 
-  // Mark as paid modal
   function openMarkPaid(payment) {
     setSelectedPayment(payment)
     setError('')
@@ -158,7 +160,8 @@ export default function Payments() {
     }
 
     setSaving(true)
-    const today = new Date().toISOString().split('T')[0]
+    // FIX: Use local date string instead of toISOString()
+    const today = getLocalDateString()
     const { error } = await supabase
       .from('payments')
       .update({ status: 'paid', paid_date: today })
@@ -206,10 +209,10 @@ export default function Payments() {
     setSaving(false)
   }
 
-  // FIX 2: Check the due date when undoing a paid payment
   async function handleMarkPending(payment) {
     setSaving(true)
-    const today = new Date().toISOString().split('T')[0]
+    // FIX: Use local date string instead of toISOString()
+    const today = getLocalDateString()
     const newStatus = payment.due_date < today ? 'overdue' : 'pending'
 
     const { error } = await supabase.from('payments').update({ status: newStatus, paid_date: null }).eq('id', payment.id)
@@ -294,7 +297,6 @@ export default function Payments() {
     setSaving(false)
   }
 
-  // Add payment modal
   function openAdd() {
     setAddForm({ tenant_id: '', amount: DEFAULT_RENT_AMOUNT, due_date: '' })
     setError('')
@@ -345,7 +347,6 @@ export default function Payments() {
     })
   }
 
-  // Generate bills manually for the current billing month.
   async function handleGenerateBillsConfirmed() {
     setNotice(null)
     setError('')
@@ -397,7 +398,6 @@ export default function Payments() {
 
     const activeTenantIds = tenantsInBillingMonth.map(t => t.id)
 
-    // Any bill for this tenant/month blocks generation, including paid or overdue records.
     const { data: existingBills, error: existingBillsError } = await supabase
       .from('payments')
       .select('tenant_id')
@@ -485,7 +485,7 @@ export default function Payments() {
             disabled={saving}
             className="flex items-center justify-center gap-2 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-40 shadow-sm"
           >
-            ⚡ Generate bills
+             Generate bills
           </button>
           <button
             onClick={openAdd}
@@ -737,7 +737,8 @@ export default function Payments() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-stone-400">Paid date</span>
-                <span className="text-xs font-semibold text-stone-700">{formatDate(new Date().toISOString().split('T')[0])}</span>
+                {/* FIX: Display local date in the modal preview as well */}
+                <span className="text-xs font-semibold text-stone-700">{formatDate(getLocalDateString())}</span>
               </div>
             </div>
 
